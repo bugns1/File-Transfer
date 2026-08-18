@@ -80,6 +80,16 @@ async function handleSignalingMessage(msg) {
       window._pendingInvite = msg;
       showInviteDialog(msg.from);
       break;
+    case "ice-candidate":
+      if (pc) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+          console.log("Added ICE candidate");
+        } catch (e) {
+          console.error("Add ICE candidate error:", e);
+        }
+      }
+      break;
     case "signal":
       await handleSignal(msg.from, msg.data);
       break;
@@ -104,19 +114,19 @@ async function handleSignal(from, data) {
       };
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log("New ICE candidate:", event.candidate.candidate?.substring(0, 50));
+        console.log("Sending ICE candidate");
+        // Send via signaling server
+        if (window._pendingInvite?.from) {
+          ws.send(JSON.stringify({
+            type: "ice-candidate",
+            from: peerId,
+            to: window._pendingInvite.from,
+            candidate: event.candidate
+          }));
+        }
       } else {
         console.log("ICE gathering complete");
       }
-    };
-      pc.onconnectionstatechange = () => {
-        console.log("PC State:", pc.connectionState);
-        if (pc.connectionState === "connected") {
-          peerConnected = true;
-          onConnected();
-        } else if (pc.connectionState === "disconnected" || pc.connectionState === "closed") {
-          peerConnected = false;
-          onDisconnected();
         }
       };
     }

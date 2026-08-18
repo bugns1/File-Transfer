@@ -41,7 +41,7 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
-      if (msg.type === 'invite' || msg.type === 'signal' || msg.type === 'reject') {
+      if (msg.type === 'invite' || msg.type === 'signal' || msg.type === 'reject' || msg.type === 'ice-candidate') {
         target.send(JSON.stringify({
           type: msg.type,
           from: msg.from,
