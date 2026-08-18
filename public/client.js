@@ -267,6 +267,24 @@ async function acceptConnection() {
         if (pc.connectionState === "connected") { peerConnected = true; onConnected(); }
         else if (pc.connectionState === "disconnected" || pc.connectionState === "closed") { peerConnected = false; onDisconnected(); }
       };
+       pc.onicecandidate = (event) => {
+         if (event.candidate) {
+           console.log("Sending ICE candidate");
+           if (window._lastSignalFrom) {
+             ws.send(JSON.stringify({
+               type: "ice-candidate",
+               from: peerId,
+               to: window._lastSignalFrom,
+               candidate: event.candidate
+             }));
+           }
+         }
+       };
+       pc.oniceconnectionstatechange = () => {
+         if (pc.iceConnectionState === "failed") {
+           updateConnectionStatus("error", "❌ 网络连接失败");
+         }
+       };
     }
 
     // Create data channel
