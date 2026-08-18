@@ -1,8 +1,4 @@
-// ============================================================
 // P2P File Transfer - Pure WebRTC Implementation
-// Fixed signaling protocol
-// ============================================================
-
 const CONFIG = {
   CHUNK_SIZE: 16 * 1024,
   ICE_SERVERS: [
@@ -42,10 +38,7 @@ function getTime() {
   return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
-// ============================================================
 // WebSocket Signaling
-// ============================================================
-
 function setupWebSocket() {
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(protocol + '://' + location.host + '/ws?peerId=' + peerId);
@@ -56,8 +49,8 @@ function setupWebSocket() {
 
   ws.onmessage = async (event) => {
     try {
-      console.log("RAW MESSAGE:", event.data);
       const msg = JSON.parse(event.data);
+      console.log('收到消息:', msg.type, 'from:', msg.from);
       await handleSignalingMessage(msg);
     } catch (e) {
       console.error('Parse error:', e);
@@ -72,202 +65,51 @@ function setupWebSocket() {
 }
 
 async function handleSignalingMessage(msg) {
-  console.log("📨 收到消息:", JSON.stringify(msg));
-  console.log("Signal:", msg.type, "from:", msg.from);
   switch (msg.type) {
-    case "invite":
-      console.log("📩 收到邀请!", msg.from);
+    case 'invite':
       window._pendingInvite = msg;
       showInviteDialog(msg.from);
       break;
-    case "ice-candidate":
-      if (pc) {
+    case 'signal':
+      await handleSignal(msg.from, msg.data);
+      break;
+    case 'ice-candidate':
+      if (pc && msg.candidate) {
         try {
           await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
-          console.log("Added ICE candidate");
+          console.log('Added ICE candidate');
         } catch (e) {
-          console.error("Add ICE candidate error:", e);
+          console.error('Add ICE candidate error:', e);
         }
       }
       break;
-    case "signal":
-      await handleSignal(msg.from, msg.data);
-      break;
-    case "peer-disconnected":
-      updateConnectionStatus("error", "❌ 对方已断开");
+    case 'peer-disconnected':
+      updateConnectionStatus('error', '❌ 对方已断开');
       closeConnection();
       break;
     default:
-      console.warn("Unknown:", msg.type);
+      console.warn('Unknown:', msg.type);
   }
 }
 
 async function handleSignal(from, data) {
-  console.log("handleSignal called from:", from, "type:", data?.type);
+  console.log('handleSignal from:', from, 'type:', data?.type);
   try {
     // Create PC if not exists
     if (!pc) {
       pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
+      
       pc.ondatachannel = (event) => {
         dataChannel = event.channel;
         setupDataChannel();
       };
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        console.log("Sending ICE candidate");
-        // Send via signaling server
-        if (window._pendingInvite?.from) {
-          ws.send(JSON.stringify({
-            type: "ice-candidate",
-            from: peerId,
-            to: window._pendingInvite.from,
-            candidate: event.candidate
-          }));
-        }
-      } else {
-        console.log("ICE gathering complete");
-      }
-    };
-    pc.oniceconnectionstatechange = () => {
-    }
-
-    const desc = new RTCSessionDescription(data);
-    console.log("Setting remote description, type:", desc.type);
-    await pc.setRemoteDescription(desc);
-
-    if (data.type === "offer") {
-      console.log("Creating answer...");
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await waitForIceGathering();
-
-      if (!ws || ws.readyState !== WebSocket.OPEN) { console.error("WebSocket not ready"); return; }
-      ws.send(JSON.stringify({ type: "signal", from: peerId, to: from, data: pc.localDescription }));
-      updateConnectionStatus("connecting", "🔄 正在建立直连...");
-    }
-  } catch (err) {
-    console.error("Signal error:", err);
-    updateConnectionStatus("error", "❌ 信号处理失败: " + err.message);
-  }
-}
-
-function showInviteDialog(from, fileInfo) {
-  const overlay = document.createElement("div");
-  overlay.className = "invite-overlay";
-  overlay.innerHTML = `
-    <div class="invite-box">
-      <h3>📥 收到文件传输请求</h3>
-      <p>来自: <strong>${from}</strong></p>
-      <p>准备接收文件...</p>
-      <p class="encrypt-hint">🔒 WebRTC 端到端加密</p>
-      <div class="invite-buttons">
-        <button onclick="acceptConnection(); this.closest('.invite-overlay').remove();" class="accept-btn">接受</button>
-        <button onclick="rejectConnection(); this.closest('.invite-overlay').remove();" class="reject-btn">拒绝</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-}
-
-function rejectConnection() {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "reject", from: peerId, to: window._pendingInvite?.from }));
-  }
-}
-
-async function connectToPeer() {
-  const targetId = document.getElementById("targetPeerId").value.trim().toUpperCase();
-  if (!targetId) { alert("请输入对方的连接 ID"); return; }
-  if (targetId === peerId) { alert("不能连接自己！"); return; }
-
-  updateConnectionStatus("connecting", "🔄 正在发送连接请求...");
-
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    updateConnectionStatus("error", "❌ 信令服务器未连接");
-    return;
-  }
-
-  // Just send invite, wait for對方接受后发送offer
-  ws.send(JSON.stringify({ type: "invite", from: peerId, to: targetId }));
-  updateConnectionStatus("connecting", "⏳ 等待对方接受...");
-}
-
-
-async function createPeerConnection() {
-  pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
-  
-  pc.ondatachannel = (event) => {
-    dataChannel = event.channel;
-    setupDataChannel();
-  };
-  
-  pc.onconnectionstatechange = () => {
-    console.log("State:", pc.connectionState);
-    if (pc.connectionState === "connected") {
-      peerConnected = true;
-      onConnected();
-    } else if (pc.connectionState === "disconnected" || pc.connectionState === "closed") {
-      peerConnected = false;
-      onDisconnected();
-    }
-  };
-  
-  pc.oniceconnectionstatechange = () => {
-    if (pc.iceConnectionState === "failed") {
-      updateConnectionStatus("error", "❌ 网络连接失败");
-    }
-  };
-}
-
-function setupDataChannel() {
-  if (!dataChannel) return;
-  
-  dataChannel.binaryType = 'arraybuffer';
-
-  dataChannel.onopen = () => {
-    console.log('DataChannel opened!');
-    peerConnected = true;
-    onConnected();
-  };
-
-  dataChannel.onmessage = async (event) => {
-    try {
-      const msg = JSON.parse(event.data);
-      await handleMessage(msg);
-    } catch (err) {
-      console.error('Parse error:', err);
-    }
-  };
-
-  dataChannel.onclose = () => {
-    console.log('DataChannel closed');
-    peerConnected = false;
-    onDisconnected();
-  };
-
-  dataChannel.onerror = (err) => {
-    console.error('DataChannel error:', err);
-  };
-}
-
-
-async function acceptConnection() {
-  console.log("用户点击接受");
-  try {
-    window._lastSignalFrom = window._pendingInvite?.from;
-    
-    if (!pc) {
-      pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
-      pc.ondatachannel = (event) => {
-        dataChannel = event.channel;
-        setupDataChannel();
-      };
+      
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          console.log("Sending ICE candidate");
+          console.log('Sending ICE candidate');
           if (window._lastSignalFrom) {
             ws.send(JSON.stringify({
-              type: "ice-candidate",
+              type: 'ice-candidate',
               from: peerId,
               to: window._lastSignalFrom,
               candidate: event.candidate
@@ -275,63 +117,140 @@ async function acceptConnection() {
           }
         }
       };
+      
       pc.onconnectionstatechange = () => {
-        console.log("PC State:", pc.connectionState);
-        if (pc.connectionState === "connected") {
+        console.log('PC State:', pc.connectionState);
+        if (pc.connectionState === 'connected') {
           peerConnected = true;
           onConnected();
-        } else if (pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+        } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+          peerConnected = false;
+          onDisconnected();
+        }
+      };
+      
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'failed') {
+          updateConnectionStatus('error', '❌ 网络连接失败');
+        }
+      };
+    }
+
+    const desc = new RTCSessionDescription(data);
+    console.log('Setting remote description, type:', desc.type);
+    await pc.setRemoteDescription(desc);
+
+    if (data.type === 'offer') {
+      console.log('Creating answer...');
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await waitForIceGathering();
+
+      if (!ws || ws.readyState !== WebSocket.OPEN) { console.error('WebSocket not ready'); return; }
+      ws.send(JSON.stringify({ type: 'signal', from: peerId, to: from, data: pc.localDescription }));
+      updateConnectionStatus('connecting', '🔄 正在建立直连...');
+    }
+  } catch (err) {
+    console.error('Signal error:', err);
+    updateConnectionStatus('error', '❌ 信号处理失败: ' + err.message);
+  }
+}
+
+function showInviteDialog(from) {
+  const overlay = document.createElement('div');
+  overlay.className = 'invite-overlay';
+  overlay.innerHTML = '<div class="invite-box"><h3>📥 收到文件传输请求</h3><p>来自: <strong>' + from + '</strong></p><p>准备接收文件...</p><p class="encrypt-hint">🔒 WebRTC 端到端加密</p><div class="invite-buttons"><button onclick="acceptConnection(); this.closest(\'.invite-overlay\').remove();" class="accept-btn">接受</button><button onclick="rejectConnection(); this.closest(\'.invite-overlay\').remove();" class="reject-btn">拒绝</button></div></div>';
+  document.body.appendChild(overlay);
+}
+
+function rejectConnection() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'reject', from: peerId, to: window._pendingInvite?.from }));
+  }
+}
+
+async function connectToPeer() {
+  const targetId = document.getElementById('targetPeerId').value.trim().toUpperCase();
+  if (!targetId) { alert('请输入对方的连接 ID'); return; }
+  if (targetId === peerId) { alert('不能连接自己！'); return; }
+
+  updateConnectionStatus('connecting', '🔄 正在发送连接请求...');
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    updateConnectionStatus('error', '❌ 信令服务器未连接');
+    return;
+  }
+
+  ws.send(JSON.stringify({ type: 'invite', from: peerId, to: targetId }));
+  updateConnectionStatus('connecting', '⏳ 等待对方接受...');
+}
+
+async function acceptConnection() {
+  console.log('用户点击接受');
+  try {
+    window._lastSignalFrom = window._pendingInvite?.from;
+
+    if (!pc) {
+      pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
+      
+      pc.ondatachannel = (event) => {
+        dataChannel = event.channel;
+        setupDataChannel();
+      };
+      
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log('Sending ICE candidate');
+          if (window._lastSignalFrom) {
+            ws.send(JSON.stringify({
+              type: 'ice-candidate',
+              from: peerId,
+              to: window._lastSignalFrom,
+              candidate: event.candidate
+            }));
+          }
+        }
+      };
+      
+      pc.onconnectionstatechange = () => {
+        console.log('PC State:', pc.connectionState);
+        if (pc.connectionState === 'connected') {
+          peerConnected = true;
+          onConnected();
+        } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
           peerConnected = false;
           onDisconnected();
         }
       };
     }
 
-    dataChannel = pc.createDataChannel("files", { ordered: true });
+    dataChannel = pc.createDataChannel('files', { ordered: true });
     setupDataChannel();
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     await waitForIceGathering();
 
-    if (!ws || ws.readyState !== WebSocket.OPEN) { console.error("WebSocket not ready"); return; }
-    ws.send(JSON.stringify({ type: "signal", from: peerId, to: window._lastSignalFrom, data: pc.localDescription }));
-    updateConnectionStatus("connecting", "🔄 正在等待对方...");
+    if (!ws || ws.readyState !== WebSocket.OPEN) { console.error('WebSocket not ready'); return; }
+    ws.send(JSON.stringify({ type: 'signal', from: peerId, to: window._lastSignalFrom, data: pc.localDescription }));
+    updateConnectionStatus('connecting', '🔄 正在等待对方...');
   } catch (err) {
-    console.error("Accept failed:", err);
-    updateConnectionStatus("error", "❌ 连接失败: " + err.message);
+    console.error('Accept failed:', err);
+    updateConnectionStatus('error', '❌ 连接失败: ' + err.message);
   }
 }
 
-
-
 async function waitForIceGathering() {
   return new Promise((resolve) => {
-    // Check if already complete
-    if (pc.iceGatheringState === "complete") { resolve(); return; }
-    
-    // Wait for gathering to complete
-    const checkState = () => {
-      if (pc.iceGatheringState === "complete") {
-        console.log("ICE gathering complete");
-        resolve();
-      }
+    if (pc.iceGatheringState === 'complete') { resolve(); return; }
+    pc.onicegatheringstatechange = () => {
+      if (pc.iceGatheringState === 'complete') resolve();
     };
-    
-    pc.onicegatheringstatechange = checkState;
-    
-    // Fallback timeout
-    setTimeout(() => {
-      console.log("ICE gathering timeout, continuing anyway");
-      resolve();
-    }, 5000);
+    setTimeout(resolve, 5000);
   });
 }
 
-// ============================================================
 // Connection State
-// ============================================================
-
 function onConnected() {
   updateConnectionStatus('connected', '✅ 已直连 - 可以传输文件');
   document.getElementById('transferSection').style.display = 'block';
@@ -362,9 +281,36 @@ function updateConnectionStatus(type, message) {
   el.textContent = message;
 }
 
-// ============================================================
 // File Transfer
-// ============================================================
+function setupDataChannel() {
+  if (!dataChannel) return;
+  dataChannel.binaryType = 'arraybuffer';
+
+  dataChannel.onopen = () => {
+    console.log('DataChannel opened!');
+    peerConnected = true;
+    onConnected();
+  };
+
+  dataChannel.onmessage = async (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      await handleMessage(msg);
+    } catch (err) {
+      console.error('Parse error:', err);
+    }
+  };
+
+  dataChannel.onclose = () => {
+    console.log('DataChannel closed');
+    peerConnected = false;
+    onDisconnected();
+  };
+
+  dataChannel.onerror = (err) => {
+    console.error('DataChannel error:', err);
+  };
+}
 
 async function handleMessage(msg) {
   console.log('Data message:', msg.type);
@@ -415,16 +361,7 @@ function addReceivedFile(transferId) {
   const item = document.createElement('div');
   item.className = 'file-item';
   item.id = 'received-' + transferId;
-  item.innerHTML = `
-    <span class="file-icon">📄</span>
-    <div class="file-info">
-      <div class="file-name">${transfer.name}</div>
-      <div class="file-meta">接收中... 0 / ${formatSize(transfer.size)}</div>
-    </div>
-    <div class="progress-bar" style="width:120px">
-      <div class="progress-fill sending" style="width:0%"></div>
-    </div>
-  `;
+  item.innerHTML = '<span class="file-icon">📄</span><div class="file-info"><div class="file-name">' + transfer.name + '</div><div class="file-meta">接收中... 0 / ' + formatSize(transfer.size) + '</div></div><div class="progress-bar" style="width:120px"><div class="progress-fill sending" style="width:0%"></div></div>';
   list.insertBefore(item, list.firstChild);
 }
 
@@ -464,7 +401,7 @@ function updateReceiveProgress(transferId) {
   const speed = transfer.receivedSize / Math.max(elapsed, 1);
 
   if (fill) fill.style.width = percent + '%';
-  if (meta) meta.textContent = `接收中... ${formatSize(transfer.receivedSize)} / ${formatSize(transfer.size)} · ${formatSize(speed)}/s`;
+  if (meta) meta.textContent = '接收中... ' + formatSize(transfer.receivedSize) + ' / ' + formatSize(transfer.size) + ' · ' + formatSize(speed) + '/s';
 }
 
 async function handleComplete(msg) {
@@ -504,10 +441,7 @@ function handleError(err) {
   alert('错误: ' + (err.message || err));
 }
 
-// ============================================================
 // Upload
-// ============================================================
-
 async function uploadFiles(files) {
   for (const file of files) {
     await uploadSingleFile(file);
@@ -578,19 +512,7 @@ function addUploadItem(transferId, fileInfo) {
   const item = document.createElement('div');
   item.className = 'queue-item';
   item.id = 'upload-' + transferId;
-  item.innerHTML = `
-    <div class="queue-item-header">
-      <span class="queue-item-name">${fileInfo.name}</span>
-      <span class="queue-item-size">${formatSize(fileInfo.size)}</span>
-    </div>
-    <div class="progress-bar">
-      <div class="progress-fill sending" style="width: 0%"></div>
-    </div>
-    <div class="queue-item-status">
-      <span class="upload-status">准备中...</span>
-      <span class="upload-speed"></span>
-    </div>
-  `;
+  item.innerHTML = '<div class="queue-item-header"><span class="queue-item-name">' + fileInfo.name + '</span><span class="queue-item-size">' + formatSize(fileInfo.size) + '</span></div><div class="progress-bar"><div class="progress-fill sending" style="width: 0%"></div></div><div class="queue-item-status"><span class="upload-status">准备中...</span><span class="upload-speed"></span></div>';
   queue.appendChild(item);
 }
 
@@ -617,10 +539,7 @@ function updateSendProgress(upload) {
   }
 }
 
-// ============================================================
 // Drag & Drop
-// ============================================================
-
 function setupDragDrop() {
   const dropZone = document.getElementById('dropZone');
   const fileInput = document.getElementById('fileInput');
@@ -638,10 +557,7 @@ function setupDragDrop() {
   });
 }
 
-// ============================================================
 // Chat
-// ============================================================
-
 function sendMessage() {
   const input = document.getElementById('chatInput');
   const text = input.value.trim();
@@ -659,7 +575,7 @@ function addChatMessage(text, isSent) {
   const messages = document.getElementById('chatMessages');
   const msg = document.createElement('div');
   msg.className = 'chat-msg ' + (isSent ? 'sent' : 'received');
-  msg.innerHTML = `${text}<div class="time">${getTime()}</div>`;
+  msg.innerHTML = text + '<div class="time">' + getTime() + '</div>';
   messages.appendChild(msg);
   messages.scrollTop = messages.scrollHeight;
 }
@@ -670,20 +586,14 @@ function sendToPeer(msg) {
   }
 }
 
-// ============================================================
 // Utilities
-// ============================================================
-
 async function calculateHash(buffer) {
   try {
-    // Try Web Crypto API first
     const data = buffer instanceof Blob ? await buffer.arrayBuffer() : buffer;
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   } catch (e) {
-    // Fallback: simple hash for browsers without Web Crypto
-    console.warn("Web Crypto not available, using simple hash");
     const data = buffer instanceof Blob ? await buffer.arrayBuffer() : buffer;
     let hash = 0;
     const bytes = new Uint8Array(data);
@@ -696,11 +606,10 @@ async function calculateHash(buffer) {
 }
 
 function copyPeerId() {
-  const input = document.getElementById("myPeerId");
+  const input = document.getElementById('myPeerId');
   input.select();
-  input.setSelectionRange(0, 99999); // For mobile
+  input.setSelectionRange(0, 99999);
   
-  // Try modern clipboard API first
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(input.value).then(() => {
       showCopyFeedback();
@@ -708,27 +617,26 @@ function copyPeerId() {
       fallbackCopy(input.value);
     });
   } else {
-    // Fallback for older browsers
     fallbackCopy(input.value);
   }
 }
 
 function fallbackCopy(text) {
   try {
-    document.execCommand("copy");
+    document.execCommand('copy');
     showCopyFeedback();
   } catch (err) {
-    alert("复制失败，请手动复制: " + text);
+    alert('复制失败，请手动复制: ' + text);
   }
 }
 
 function showCopyFeedback() {
-  const btn = document.getElementById("copyIdBtn");
+  const btn = document.getElementById('copyIdBtn');
   const original = btn.textContent;
-  btn.textContent = "已复制 ✓";
-  btn.style.background = "var(--success)";
+  btn.textContent = '已复制 ✓';
+  btn.style.background = 'var(--success)';
   setTimeout(() => {
     btn.textContent = original;
-    btn.style.background = "";
+    btn.style.background = '';
   }, 1500);
 }
