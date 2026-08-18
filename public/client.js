@@ -606,10 +606,24 @@ function sendToPeer(msg) {
 // ============================================================
 
 async function calculateHash(buffer) {
-  const data = buffer instanceof Blob ? await buffer.arrayBuffer() : buffer;
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  try {
+    // Try Web Crypto API first
+    const data = buffer instanceof Blob ? await buffer.arrayBuffer() : buffer;
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  } catch (e) {
+    // Fallback: simple hash for browsers without Web Crypto
+    console.warn("Web Crypto not available, using simple hash");
+    const data = buffer instanceof Blob ? await buffer.arrayBuffer() : buffer;
+    let hash = 0;
+    const bytes = new Uint8Array(data);
+    for (let i = 0; i < bytes.length; i++) {
+      hash = ((hash << 5) - hash) + bytes[i];
+      hash = hash & hash;
+    }
+    return Math.abs(hash).toString(16);
+  }
 }
 
 function copyPeerId() {
