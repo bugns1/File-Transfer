@@ -71,142 +71,27 @@ function setupWebSocket() {
 }
 
 async function handleSignalingMessage(msg) {
-  console.log('Received signal:', msg.type);
+  console.log("Signal:", msg.type, "from:", msg.from);
   switch (msg.type) {
-    case 'invite':
+    case "invite":
       window._pendingInvite = msg;
-      await showInviteDialog(msg.from, msg.fileInfo);
+      showInviteDialog(msg.from, msg.fileInfo);
       break;
-    case 'signal':
+    case "signal":
       await handleSignal(msg.from, msg.data);
       break;
-    case 'peer-disconnected':
-      updateConnectionStatus('error', '❌ 对方已断开');
+    case "peer-disconnected":
+      updateConnectionStatus("error", "❌ 对方已断开");
       closeConnection();
       break;
     default:
-      console.warn('Unknown:', msg.type);
+      console.warn("Unknown:", msg.type);
   }
-}
-
-function showInviteDialog(from, fileInfo) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.className = 'invite-overlay';
-    overlay.innerHTML = `
-      <div class="invite-box">
-        <h3>📥 收到文件传输请求</h3>
-        <p>来自: <strong>${from}</strong></p>
-        <p>文件: <strong>${fileInfo?.name || '未知'}</strong></p>
-        <p>大小: <strong>${fileInfo ? formatSize(fileInfo.size) : '计算中...'}</strong></p>
-        <p class="encrypt-hint">🔒 WebRTC 端到端加密传输</p>
-        <div class="invite-buttons">
-          <button onclick="window._inviteResolve(true); this.closest('.invite-overlay').remove();" class="accept-btn">接受</button>
-          <button onclick="window._inviteResolve(false); this.closest('.invite-overlay').remove();" class="reject-btn">拒绝</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    window._inviteResolve = resolve;
-  });
-}
-
-// ============================================================
-// WebRTC Connection
-// ============================================================
-
-async function connectToPeer() {
-  const targetId = document.getElementById('targetPeerId').value.trim().toUpperCase();
-  if (!targetId) { alert('请输入对方的连接 ID'); return; }
-  if (targetId === peerId) { alert('不能连接自己！'); return; }
-
-  updateConnectionStatus('connecting', '🔄 正在建立连接...');
-
-  try {
-    await createPeerConnection();
-    dataChannel = pc.createDataChannel('files', { ordered: true });
-    setupDataChannel();
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    await waitForIceGathering();
-
-    // Send offer via signaling server
-    if (!ws || ws.readyState !== WebSocket.OPEN) { console.error("WebSocket not ready"); return; }
-    ws.send(JSON.stringify({
-      type: 'signal',
-      from: peerId,
-      to: targetId,
-      data: pc.localDescription
-    }));
-
-    updateConnectionStatus('connecting', '⏳ 等待对方接受...');
-  } catch (err) {
-    console.error('Connection failed:', err);
-    updateConnectionStatus('error', '❌ 连接失败: ' + err.message);
-  }
-}
-
-async function createPeerConnection() {
-  pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
-
-  pc.ondatachannel = (event) => {
-    dataChannel = event.channel;
-    setupDataChannel();
-  };
-
-  pc.onconnectionstatechange = () => {
-    console.log('State:', pc.connectionState);
-    if (pc.connectionState === 'connected') {
-      peerConnected = true;
-      onConnected();
-    } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
-      peerConnected = false;
-      onDisconnected();
-    }
-  };
-
-  pc.oniceconnectionstatechange = () => {
-    if (pc.iceConnectionState === 'failed') {
-      updateConnectionStatus('error', '❌ 网络连接失败');
-    }
-  };
-}
-
-function setupDataChannel() {
-  dataChannel.binaryType = 'arraybuffer';
-
-  dataChannel.onopen = () => {
-    console.log('DataChannel opened!');
-    peerConnected = true;
-    onConnected();
-  };
-
-  dataChannel.onmessage = async (event) => {
-    try {
-      const msg = JSON.parse(event.data);
-      await handleMessage(msg);
-    } catch (err) {
-      console.error('Parse error:', err);
-    }
-  };
-
-  dataChannel.onclose = () => {
-    console.log('DataChannel closed');
-    peerConnected = false;
-    onDisconnected();
-  };
-
-  dataChannel.onerror = (err) => {
-    console.error('DataChannel error:', err);
-  };
 }
 
 async function handleSignal(from, data) {
-  console.log('Received signal from:', from, 'type:', data?.type);
+  console.log("Received signal from:", from, "type:", data?.type);
   try {
-    // Initialize pc if needed
     if (!pc) {
       pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
       pc.ondatachannel = (event) => {
@@ -214,36 +99,93 @@ async function handleSignal(from, data) {
         setupDataChannel();
       };
       pc.onconnectionstatechange = () => {
-        console.log('State:', pc.connectionState);
-        if (pc.connectionState === 'connected') { peerConnected = true; onConnected(); }
-        else if (pc.connectionState === 'disconnected' || pc.connectionState === 'closed') { peerConnected = false; onDisconnected(); }
+        console.log("State:", pc.connectionState);
+        if (pc.connectionState === "connected") { peerConnected = true; onConnected(); }
+        else if (pc.connectionState === "disconnected" || pc.connectionState === "closed") { peerConnected = false; onDisconnected(); }
       };
       pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === 'failed') updateConnectionStatus('error', '❌ 网络连接失败');
+        if (pc.iceConnectionState === "failed") updateConnectionStatus("error", "❌ 网络连接失败");
       };
     }
 
     const desc = new RTCSessionDescription(data);
     await pc.setRemoteDescription(desc);
 
-    if (data.type === 'offer') {
+    if (data.type === "offer") {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       await waitForIceGathering();
 
       if (!ws || ws.readyState !== WebSocket.OPEN) { console.error("WebSocket not ready"); return; }
-      ws.send(JSON.stringify({
-        type: 'signal',
-        from: peerId,
-        to: from,
-        data: pc.localDescription
-      }));
+      ws.send(JSON.stringify({ type: "signal", from: peerId, to: from, data: pc.localDescription }));
+      updateConnectionStatus("connecting", "🔄 正在建立直连...");
     }
   } catch (err) {
-    console.error('Signal error:', err);
-    updateConnectionStatus('error', '❌ 信号处理失败: ' + err.message);
+    console.error("Signal error:", err);
+    updateConnectionStatus("error", "❌ 信号处理失败: " + err.message);
   }
 }
+
+function showInviteDialog(from, fileInfo) {
+  const overlay = document.createElement("div");
+  overlay.className = "invite-overlay";
+  overlay.innerHTML = `
+    <div class="invite-box">
+      <h3>📥 收到文件传输请求</h3>
+      <p>来自: <strong>${from}</strong></p>
+      <p>准备接收文件...</p>
+      <p class="encrypt-hint">🔒 WebRTC 端到端加密</p>
+      <div class="invite-buttons">
+        <button onclick="acceptConnection(); this.closest('.invite-overlay').remove();" class="accept-btn">接受</button>
+        <button onclick="rejectConnection(); this.closest('.invite-overlay').remove();" class="reject-btn">拒绝</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function rejectConnection() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "reject", from: peerId, to: window._pendingInvite?.from }));
+  }
+}
+
+async function connectToPeer() {
+  const targetId = document.getElementById("targetPeerId").value.trim().toUpperCase();
+  if (!targetId) { alert("请输入对方的连接 ID"); return; }
+  if (targetId === peerId) { alert("不能连接自己！"); return; }
+
+  updateConnectionStatus("connecting", "🔄 正在发送连接请求...");
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    updateConnectionStatus("error", "❌ 信令服务器未连接");
+    return;
+  }
+
+  ws.send(JSON.stringify({ type: "invite", from: peerId, to: targetId }));
+  updateConnectionStatus("connecting", "⏳ 等待对方接受...");
+}
+
+async function acceptConnection() {
+  try {
+    await createPeerConnection();
+    dataChannel = pc.createDataChannel("files", { ordered: true });
+    setupDataChannel();
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await waitForIceGathering();
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) { console.error("WebSocket not ready"); return; }
+    ws.send(JSON.stringify({ type: "signal", from: peerId, to: window._pendingInvite?.from, data: pc.localDescription }));
+    updateConnectionStatus("connecting", "🔄 正在交换密钥...");
+  } catch (err) {
+    console.error("Accept failed:", err);
+    updateConnectionStatus("error", "❌ 连接失败: " + err.message);
+  }
+}
+
+
 
 async function waitForIceGathering() {
   return new Promise((resolve) => {
