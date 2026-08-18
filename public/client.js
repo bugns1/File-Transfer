@@ -71,9 +71,12 @@ function setupWebSocket() {
 }
 
 async function handleSignalingMessage(msg) {
+  console.log("📨 收到消息:", JSON.stringify(msg));
   console.log("Signal:", msg.type, "from:", msg.from);
   switch (msg.type) {
     case "invite":
+      console.log("📩 收到邀请!", msg.from, msg.fileInfo);
+      window._pendingInvite = msg;
       window._pendingInvite = msg;
       showInviteDialog(msg.from, msg.fileInfo);
       break;
