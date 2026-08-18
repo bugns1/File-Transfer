@@ -581,12 +581,39 @@ async function calculateHash(buffer) {
 }
 
 function copyPeerId() {
-  const input = document.getElementById('myPeerId');
+  const input = document.getElementById("myPeerId");
   input.select();
-  navigator.clipboard.writeText(input.value).then(() => {
-    const btn = document.getElementById('copyIdBtn');
-    const original = btn.textContent;
-    btn.textContent = '已复制 ✓';
-    setTimeout(() => btn.textContent = original, 1500);
-  });
+  input.setSelectionRange(0, 99999); // For mobile
+  
+  // Try modern clipboard API first
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(input.value).then(() => {
+      showCopyFeedback();
+    }).catch(() => {
+      fallbackCopy(input.value);
+    });
+  } else {
+    // Fallback for older browsers
+    fallbackCopy(input.value);
+  }
+}
+
+function fallbackCopy(text) {
+  try {
+    document.execCommand("copy");
+    showCopyFeedback();
+  } catch (err) {
+    alert("复制失败，请手动复制: " + text);
+  }
+}
+
+function showCopyFeedback() {
+  const btn = document.getElementById("copyIdBtn");
+  const original = btn.textContent;
+  btn.textContent = "已复制 ✓";
+  btn.style.background = "var(--success)";
+  setTimeout(() => {
+    btn.textContent = original;
+    btn.style.background = "";
+  }, 1500);
 }
