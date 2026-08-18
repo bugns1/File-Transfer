@@ -255,6 +255,7 @@ async function acceptConnection() {
   console.log("用户点击接受");
   try {
     // Create PC
+    window._lastSignalFrom = window._pendingInvite?.from;
     if (!pc) {
       pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
       pc.ondatachannel = (event) => {
