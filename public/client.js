@@ -56,6 +56,7 @@ function setupWebSocket() {
 
   ws.onmessage = async (event) => {
     try {
+      console.log("RAW MESSAGE:", event.data);
       const msg = JSON.parse(event.data);
       await handleSignalingMessage(msg);
     } catch (e) {
