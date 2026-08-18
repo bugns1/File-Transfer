@@ -196,6 +196,38 @@ async function createPeerConnection() {
   };
 }
 
+function setupDataChannel() {
+  if (!dataChannel) return;
+  
+  dataChannel.binaryType = 'arraybuffer';
+
+  dataChannel.onopen = () => {
+    console.log('DataChannel opened!');
+    peerConnected = true;
+    onConnected();
+  };
+
+  dataChannel.onmessage = async (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      await handleMessage(msg);
+    } catch (err) {
+      console.error('Parse error:', err);
+    }
+  };
+
+  dataChannel.onclose = () => {
+    console.log('DataChannel closed');
+    peerConnected = false;
+    onDisconnected();
+  };
+
+  dataChannel.onerror = (err) => {
+    console.error('DataChannel error:', err);
+  };
+}
+
+
 async function acceptConnection() {
   try {
     await createPeerConnection();
