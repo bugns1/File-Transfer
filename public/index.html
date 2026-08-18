@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P 文件传输</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🔗 P2P 文件传输</h1>
+      <p class="subtitle">浏览器直连 · 端到端加密 · 无需服务器中转数据</p>
+    </header>
+
+    <div class="main-content">
+      <section class="identity-section">
+        <h2>📌 你的连接 ID</h2>
+        <div class="identity-box">
+          <input type="text" id="myPeerId" readonly>
+          <button id="copyIdBtn" onclick="copyPeerId()">复制</button>
+        </div>
+        <p class="hint">把上面的 ID 分享给对方，或让对方输入他们的 ID</p>
+      </section>
+
+      <section class="connect-section">
+        <h2>🔗 连接到对方</h2>
+        <div class="input-group">
+          <input type="text" id="targetPeerId" placeholder="输入对方的连接 ID...">
+          <button id="connectBtn" onclick="connectToPeer()">连接</button>
+        </div>
+        <div id="connectionStatus" class="status"></div>
+      </section>
+
+      <section class="transfer-section" id="transferSection" style="display:none;">
+        <h2>📁 文件传输</h2>
+        <div class="send-area">
+          <div class="drop-zone" id="dropZone">
+            <p>📦 拖放文件到此处，或点击选择</p>
+            <p class="small-hint">支持任意类型文件，浏览器直传不经过服务器</p>
+            <input type="file" id="fileInput" multiple hidden>
+          </div>
+          <div id="uploadQueue" class="queue"></div>
+        </div>
+        <div class="receive-area">
+          <h3>📥 接收的文件</h3>
+          <div id="receivedFiles" class="files-list"></div>
+        </div>
+      </section>
+
+      <section class="chat-section" id="chatSection" style="display:none;">
+        <h2>💬 聊天</h2>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-input">
+          <input type="text" id="chatInput" placeholder="输入消息..." onkeypress="handleChatKey(event)">
+          <button onclick="sendMessage()">发送</button>
+        </div>
+      </section>
+    </div>
+
+    <footer>
+      <p>P2P 文件传输 · WebRTC 直连 · 数据不经过服务器</p>
+    </footer>
+  </div>
+  <script src="client.js"></script>
+</body>
+</html>

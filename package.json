@@ -1,0 +1,12 @@
+{
+  "name": "p2p-file-transfer",
+  "version": "1.0.0",
+  "description": "Pure WebRTC P2P File Transfer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
