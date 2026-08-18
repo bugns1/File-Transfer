@@ -254,50 +254,48 @@ function setupDataChannel() {
 async function acceptConnection() {
   console.log("用户点击接受");
   try {
-    // Create PC
     window._lastSignalFrom = window._pendingInvite?.from;
+    
     if (!pc) {
       pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
       pc.ondatachannel = (event) => {
         dataChannel = event.channel;
         setupDataChannel();
       };
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log("Sending ICE candidate");
+          if (window._lastSignalFrom) {
+            ws.send(JSON.stringify({
+              type: "ice-candidate",
+              from: peerId,
+              to: window._lastSignalFrom,
+              candidate: event.candidate
+            }));
+          }
+        }
+      };
       pc.onconnectionstatechange = () => {
         console.log("PC State:", pc.connectionState);
-        if (pc.connectionState === "connected") { peerConnected = true; onConnected(); }
-        else if (pc.connectionState === "disconnected" || pc.connectionState === "closed") { peerConnected = false; onDisconnected(); }
+        if (pc.connectionState === "connected") {
+          peerConnected = true;
+          onConnected();
+        } else if (pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+          peerConnected = false;
+          onDisconnected();
+        }
       };
-       pc.onicecandidate = (event) => {
-         if (event.candidate) {
-           console.log("Sending ICE candidate");
-           if (window._lastSignalFrom) {
-             ws.send(JSON.stringify({
-               type: "ice-candidate",
-               from: peerId,
-               to: window._lastSignalFrom,
-               candidate: event.candidate
-             }));
-           }
-         }
-       };
-       pc.oniceconnectionstatechange = () => {
-         if (pc.iceConnectionState === "failed") {
-           updateConnectionStatus("error", "❌ 网络连接失败");
-         }
-       };
     }
 
-    // Create data channel
     dataChannel = pc.createDataChannel("files", { ordered: true });
     setupDataChannel();
 
-    // Create and send offer
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     await waitForIceGathering();
 
     if (!ws || ws.readyState !== WebSocket.OPEN) { console.error("WebSocket not ready"); return; }
-    ws.send(JSON.stringify({ type: "signal", from: peerId, to: window._pendingInvite?.from, data: pc.localDescription }));
+    ws.send(JSON.stringify({ type: "signal", from: peerId, to: window._lastSignalFrom, data: pc.localDescription }));
     updateConnectionStatus("connecting", "🔄 正在等待对方...");
   } catch (err) {
     console.error("Accept failed:", err);
