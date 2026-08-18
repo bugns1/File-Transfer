@@ -93,8 +93,9 @@ async function handleSignalingMessage(msg) {
 }
 
 async function handleSignal(from, data) {
-  console.log("Received signal from:", from, "type:", data?.type);
+  console.log("handleSignal called from:", from, "type:", data?.type);
   try {
+    // Create PC if not exists
     if (!pc) {
       pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
       pc.ondatachannel = (event) => {
@@ -102,19 +103,23 @@ async function handleSignal(from, data) {
         setupDataChannel();
       };
       pc.onconnectionstatechange = () => {
-        console.log("State:", pc.connectionState);
-        if (pc.connectionState === "connected") { peerConnected = true; onConnected(); }
-        else if (pc.connectionState === "disconnected" || pc.connectionState === "closed") { peerConnected = false; onDisconnected(); }
-      };
-      pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === "failed") updateConnectionStatus("error", "❌ 网络连接失败");
+        console.log("PC State:", pc.connectionState);
+        if (pc.connectionState === "connected") {
+          peerConnected = true;
+          onConnected();
+        } else if (pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+          peerConnected = false;
+          onDisconnected();
+        }
       };
     }
 
     const desc = new RTCSessionDescription(data);
+    console.log("Setting remote description, type:", desc.type);
     await pc.setRemoteDescription(desc);
 
     if (data.type === "offer") {
+      console.log("Creating answer...");
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       await waitForIceGathering();
@@ -160,11 +165,29 @@ async function connectToPeer() {
 
   updateConnectionStatus("connecting", "🔄 正在发送连接请求...");
 
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    updateConnectionStatus("error", "❌ 信令服务器未连接");
-    return;
+  // Create PC immediately as initiator
+  if (!pc) {
+    pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
+    pc.ondatachannel = (event) => {
+      dataChannel = event.channel;
+      setupDataChannel();
+    };
+    pc.onconnectionstatechange = () => {
+      console.log("PC State:", pc.connectionState);
+      if (pc.connectionState === "connected") { peerConnected = true; onConnected(); }
+      else if (pc.connectionState === "disconnected" || pc.connectionState === "closed") { peerConnected = false; onDisconnected(); }
+    };
   }
 
+  // Create data channel as initiator
+  dataChannel = pc.createDataChannel("files", { ordered: true });
+  setupDataChannel();
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    updateConnectionStatus("error", "❌ 信令服务器未连接");
+    return;}
+  
+  // Send invite
   ws.send(JSON.stringify({ type: "invite", from: peerId, to: targetId }));
   updateConnectionStatus("connecting", "⏳ 等待对方接受...");
 }
