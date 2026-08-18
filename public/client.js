@@ -2,13 +2,20 @@
 const CONFIG = {
   CHUNK_SIZE: 16 * 1024,
   ICE_SERVERS: [
+    // STUN servers
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
-    { urls: 'stun:stun.services.mozilla.com' }
+    { urls: 'stun:stun.services.mozilla.com' },
+    { urls: 'stun:stun.voip.internode.on.net:3478' },
+
+    // TURN server (for strict NAT/firewall)
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
   ]
 };
 
