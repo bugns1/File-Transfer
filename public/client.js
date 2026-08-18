@@ -169,6 +169,33 @@ async function connectToPeer() {
   updateConnectionStatus("connecting", "⏳ 等待对方接受...");
 }
 
+
+async function createPeerConnection() {
+  pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
+  
+  pc.ondatachannel = (event) => {
+    dataChannel = event.channel;
+    setupDataChannel();
+  };
+  
+  pc.onconnectionstatechange = () => {
+    console.log("State:", pc.connectionState);
+    if (pc.connectionState === "connected") {
+      peerConnected = true;
+      onConnected();
+    } else if (pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+      peerConnected = false;
+      onDisconnected();
+    }
+  };
+  
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === "failed") {
+      updateConnectionStatus("error", "❌ 网络连接失败");
+    }
+  };
+}
+
 async function acceptConnection() {
   try {
     await createPeerConnection();
