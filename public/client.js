@@ -273,11 +273,24 @@ async function acceptConnection() {
 
 async function waitForIceGathering() {
   return new Promise((resolve) => {
-    if (pc.iceGatheringState === 'complete') { resolve(); return; }
-    pc.onicegatheringstatechange = () => {
-      if (pc.iceGatheringState === 'complete') resolve();
+    // Check if already complete
+    if (pc.iceGatheringState === "complete") { resolve(); return; }
+    
+    // Wait for gathering to complete
+    const checkState = () => {
+      if (pc.iceGatheringState === "complete") {
+        console.log("ICE gathering complete");
+        resolve();
+      }
     };
-    setTimeout(resolve, 3000);
+    
+    pc.onicegatheringstatechange = checkState;
+    
+    // Fallback timeout
+    setTimeout(() => {
+      console.log("ICE gathering timeout, continuing anyway");
+      resolve();
+    }, 5000);
   });
 }
 
