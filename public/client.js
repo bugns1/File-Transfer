@@ -127,8 +127,8 @@ async function handleSignal(from, data) {
       } else {
         console.log("ICE gathering complete");
       }
-        }
-      };
+    };
+    pc.oniceconnectionstatechange = () => {
     }
 
     const desc = new RTCSessionDescription(data);
