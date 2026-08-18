@@ -102,6 +102,13 @@ async function handleSignal(from, data) {
         dataChannel = event.channel;
         setupDataChannel();
       };
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        console.log("New ICE candidate:", event.candidate.candidate?.substring(0, 50));
+      } else {
+        console.log("ICE gathering complete");
+      }
+    };
       pc.onconnectionstatechange = () => {
         console.log("PC State:", pc.connectionState);
         if (pc.connectionState === "connected") {
