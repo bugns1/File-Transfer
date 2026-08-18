@@ -4,7 +4,11 @@ const CONFIG = {
   ICE_SERVERS: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.services.mozilla.com' }
   ]
 };
 
@@ -106,7 +110,7 @@ async function handleSignal(from, data) {
       
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          console.log('Sending ICE candidate');
+          console.log('ICE candidate:', event.candidate.candidate?.substring(0, 80));
           if (window._lastSignalFrom) {
             ws.send(JSON.stringify({
               type: 'ice-candidate',
